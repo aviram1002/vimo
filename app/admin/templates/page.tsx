@@ -67,7 +67,7 @@ export default function AdminTemplatesPage() {
       tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
     }
     if (editing) {
-      await supabase.from('templates').update(payload).eq('id', editing.id)
+      await supabase.from('templates').update(payload as any).eq('id', editing.id)
     } else {
       await supabase.from('templates').insert(payload as any)
     }
@@ -77,7 +77,7 @@ export default function AdminTemplatesPage() {
   }
 
   async function toggleActive(t: Template) {
-    await supabase.from('templates').update({ is_active: !t.is_active }).eq('id', t.id)
+    await supabase.from('templates').update({ is_active: !t.is_active } as any).eq('id', t.id)
     fetchTemplates()
   }
 
