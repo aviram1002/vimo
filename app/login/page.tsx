@@ -1,18 +1,49 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { Logo } from '@/components/ui/Logo'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 
 export default function LoginPage() {
+  const router = useRouter()
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [mode, setMode]         = useState<'login' | 'signup'>('login')
   const [sent, setSent]         = useState(false)
+
+  // Handle hash-based OAuth tokens (Google returns #access_token=...)
+  useEffect(() => {
+    const handleAuthCallback = async () => {
+      const hash = window.location.hash
+      if (hash && hash.includes('access_token')) {
+        const { data, error } = await supabase.auth.getSession()
+        if (data.session) {
+          router.push('/app/dashboard')
+          return
+        }
+        // Try to exchange the hash
+        const { data: userData } = await supabase.auth.getUser()
+        if (userData.user) {
+          router.push('/app/dashboard')
+        }
+      }
+    }
+    handleAuthCallback()
+
+    // Also listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        router.push('/app/dashboard')
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -23,20 +54,22 @@ export default function LoginPage() {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        window.location.href = '/app/dashboard'
+        router.push('/app/dashboard')
       } else {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/app/dashboard` },
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
         })
         if (error) throw error
         setSent(true)
       }
     } catch (err: any) {
-      setError(err.message === 'Invalid login credentials'
-        ? 'אימייל או סיסמה שגויים'
-        : err.message)
+      setError(
+        err.message === 'Invalid login credentials'
+          ? 'אימייל או סיסמה שגויים'
+          : err.message
+      )
     } finally {
       setLoading(false)
     }
@@ -45,7 +78,13 @@ export default function LoginPage() {
   async function handleGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
     })
   }
 
@@ -64,7 +103,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-brand-bg flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/"><Logo size="lg" /></Link>
           <p className="text-brand-muted mt-2">
@@ -93,7 +131,6 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-brand-border" />
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               label="כתובת אימייל"
@@ -106,7 +143,7 @@ export default function LoginPage() {
             <Input
               label="סיסמה"
               type="password"
-              placeholder="לפחות 8 תווים"
+              placeholder="לפחות 6 תווים"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -121,7 +158,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Toggle */}
           <p className="text-center text-sm text-brand-muted mt-5">
             {mode === 'login' ? 'עדיין אין לך חשבון?' : 'כבר יש לך חשבון?'}{' '}
             <button
@@ -132,13 +168,6 @@ export default function LoginPage() {
             </button>
           </p>
         </div>
-
-        <p className="text-center text-xs text-brand-muted mt-6">
-          בהתחברות אתה מסכים ל
-          <Link href="/terms" className="text-brand-purple hover:underline mx-1">תנאי השימוש</Link>
-          ול
-          <Link href="/privacy" className="text-brand-purple hover:underline mr-1">מדיניות הפרטיות</Link>
-        </p>
       </div>
     </div>
   )
